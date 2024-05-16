@@ -1,15 +1,25 @@
+import 'dart:async';
+
+import 'package:amplify_api/amplify_api.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:mini_project_five/pages/get_bus_time.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:mini_project_five/models/ModelProvider.dart';
 import 'package:mini_project_five/pages/busdata.dart';
-import 'package:flutter_switch/flutter_switch.dart';
-import 'package:mini_project_five/pages/map_page.dart';
 import 'package:mini_project_five/screen/evening_bus.dart';
+import 'package:mini_project_five/amplifyconfiguration.dart';
+import 'package:amplify_datastore/amplify_datastore.dart';
+import 'package:amplify_flutter/amplify_flutter.dart';
+import 'package:amplify_api_dart/amplify_api_dart.dart';
+import 'package:uuid/uuid.dart';
 
 
 class AfternoonService extends StatefulWidget {
   final Function(int) updateSelectedBox;
 
+
   AfternoonService({required this.updateSelectedBox});
+
 
   @override
   _AfternoonServiceState createState() => _AfternoonServiceState();
@@ -22,6 +32,101 @@ class _AfternoonServiceState extends State<AfternoonService> {
   bool confirmationPressed = false;
   bool showBookingDetails = false;
   DateTime currentTime = DateTime.now();
+  String? BookingID;
+
+
+  @override
+  void initState() {
+    // TODO: implement initState
+    super.initState();
+    _configureAmplify();
+  }
+
+
+  void _configureAmplify() async {
+    final provider = ModelProvider();
+    final amplifyApi = AmplifyAPI(options: APIPluginOptions(modelProvider: provider));
+    final dataStorePlugin = AmplifyDataStore(modelProvider: provider);
+
+    Amplify.addPlugin(dataStorePlugin);
+    Amplify.addPlugin(amplifyApi);
+    Amplify.configure(amplifyconfig);
+
+    print('Amplify configured');
+  }
+
+  Future<void> create(String _MRTStation, int _TripNo) async {
+    try {
+      final model = BOOKINGDETAILS5(
+        id: Uuid().v4(),
+        MRTStation: _MRTStation,
+        TripNo: _TripNo,
+      );
+
+      final request = ModelMutations.create(model);
+      final response = await Amplify.API.mutate(request: request).response;
+
+      final createdBOOKINGDETAILS5 = response.data;
+      if (createdBOOKINGDETAILS5 == null) {
+        safePrint('errors: ${response.errors}');
+        return;
+      }
+
+      String id  = createdBOOKINGDETAILS5.id;
+      setState(() {
+        BookingID = id;
+      });
+      safePrint('Mutation result: $BookingID');// Return the ID of the created object
+    } on ApiException catch (e) {
+      safePrint('Mutation failed: $e');
+    }
+  }
+
+  Future<BOOKINGDETAILS5?> readByID() async {
+    final request = ModelQueries.list(
+      BOOKINGDETAILS5.classType,
+      where: BOOKINGDETAILS5.ID.eq(BookingID),
+    );
+    final response = await Amplify.API.query(request: request).response;
+    final data = response.data?.items.firstOrNull;
+    return data;
+  }
+
+  Future<int?> countBooking(String MRT, int TripNo) async{
+int? count;
+try{
+    final request = ModelQueries.list(
+      BOOKINGDETAILS5.classType,
+      where: BOOKINGDETAILS5.MRTSTATION.eq(MRT).and(BOOKINGDETAILS5.TRIPNO.eq(TripNo)),
+    );
+    final response = await Amplify.API.query(request: request).response;
+    final data = response.data?.items;
+
+    if (data != null)
+    {
+    count =  data.length;
+    print('$count');
+    }
+    else
+    count = 0;
+}
+    catch(e)
+    {print('$e');}
+
+   return count;
+
+  }
+
+  Future<void> delete() async {
+    final BOOKINGDETAILS5? bookingToDelete = await readByID();
+    if (bookingToDelete != null) {
+      final request = ModelMutations.delete(bookingToDelete);
+      final response = await Amplify.API.mutate(request: request).response;
+    } else {
+      print('No booking found with ID: $BookingID');
+    }
+  }
+
 
   void updateSelectedBox(int box) {
     if (!confirmationPressed) {
@@ -130,7 +235,7 @@ class _AfternoonServiceState extends State<AfternoonService> {
                   ),
                 ),
                 Text(
-                  'Station:                    ${selectedBox == 1 ? 'King Albert MRT' : 'Clementi MRT'}',
+                  'Station:                    ${selectedBox == 1 ? 'KAP' : 'CLT'}',
                   style: TextStyle(
                     fontFamily: 'Montserrat',
                     fontWeight: FontWeight.bold,
@@ -154,7 +259,7 @@ class _AfternoonServiceState extends State<AfternoonService> {
 
   @override
   Widget build(BuildContext context) {
-    String selectedStation = selectedBox == 1 ? 'King Albert MRT' : 'Clementi MRT';
+    String selectedStation = selectedBox == 1 ? 'KAP' : 'CLT';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -168,18 +273,26 @@ class _AfternoonServiceState extends State<AfternoonService> {
             children: [
               Expanded(
                 child: GestureDetector(
-                  onTap: () => updateSelectedBox(1), // Update KLT
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: Container(
-                      height: 70,
-                      color: selectedBox == 1 ? Colors.blueAccent : Colors.grey,
-                      child: Center(
-                        child: Text(
-                          'King Albert MRT',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
+                  onTap: () {
+                    setState(() {
+                      updateSelectedBox(1);
+                    });
+                  } , // Update CLT
+                  child: AnimatedContainer(
+                    duration: Duration(milliseconds: 0),
+                    height: selectedBox == 1 ? 70 : 40,
+                    curve: Curves.easeOutCubic,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(15),
+                      child: Container(
+                        color: selectedBox == 1 ? Colors.blueAccent : Colors.grey,
+                        child: Center(
+                          child: Text(
+                            'KAP',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                            ),
                           ),
                         ),
                       ),
@@ -187,21 +300,30 @@ class _AfternoonServiceState extends State<AfternoonService> {
                   ),
                 ),
               ),
+
               SizedBox(width: 8),
               Expanded(
                 child: GestureDetector(
-                  onTap: () => updateSelectedBox(2), // Update CLT
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: Container(
-                      height: 70,
-                      color: selectedBox == 2 ? Colors.blueAccent : Colors.grey,
-                      child: Center(
-                        child: Text(
-                          'Clementi MRT',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
+                  onTap: () {
+                    setState(() {
+                      updateSelectedBox(2);
+                    });
+                  },  // Update CLT
+                  child: AnimatedContainer(
+                    duration: Duration(milliseconds: 0),
+                    height: selectedBox == 2 ? 70 : 40,
+                    curve: Curves.easeOutCubic,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(15),
+                      child: Container(
+                        color: selectedBox == 2 ? Colors.blueAccent : Colors.grey,
+                        child: Center(
+                          child: Text(
+                            'CLT',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                            ),
                           ),
                         ),
                       ),
@@ -209,6 +331,7 @@ class _AfternoonServiceState extends State<AfternoonService> {
                   ),
                 ),
               ),
+
             ],
           ),
         ),
@@ -218,69 +341,74 @@ class _AfternoonServiceState extends State<AfternoonService> {
             padding: const EdgeInsets.fromLTRB(13.0, 10.0, 0.0, 0.0),
             child: Text('Selected Station: $selectedStation',
               style: TextStyle(
-                fontFamily: 'PlayFair',
-                fontSize: 20,
-                fontWeight: FontWeight.w700
+                  fontFamily: 'PlayFair',
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700
               ),),
           ),
         SizedBox(height: 5),
         if (selectedBox != 0)
-        Row(
-          children: [
-            SizedBox(width: 8),
-            Icon(
-              Icons.warning,
-              color: Colors.amber[500],
-              size: 20,
-            ),
-            SizedBox(width: 5),
-            Text(
-              'Note: Departure time listed from Block 37',
-              style: TextStyle(
-                fontSize: 17,
-                fontStyle: FontStyle.italic,
-                fontFamily: 'PlayFair',
+          Row(
+            children: [
+              SizedBox(width: 8),
+              Icon(
+                Icons.warning,
+                color: Colors.amber[500],
+                size: 20,
               ),
-            ),
-          ],
-        ),
+              SizedBox(width: 5),
+              Text(
+                'Note: Departure time listed from Block 37',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontStyle: FontStyle.italic,
+                  fontFamily: 'PlayFair',
+                ),
+              ),
+            ],
+          ),
 
         if (selectedBox != 0)
-        showBookingDetails
-            ? BookingConfirmation(
-          selectedBox: selectedBox,
-          bookedTripIndexKLT: bookedTripIndexKLT,
-          bookedTripIndexCLT: bookedTripIndexCLT,
-          getDepartureTimes: getDepartureTimes,
-          onCancel: () {
-            setState(() {
-              confirmationPressed = false;
-              showBookingDetails = false;
-            });
-          },
-        )
-            : BookingService(
-          departureTimes: getDepartureTimes(),
-          selectedBox: selectedBox,
-          bookedTripIndexKLT: bookedTripIndexKLT,
-          bookedTripIndexCLT: bookedTripIndexCLT,
-          updateBookingStatusKLT: updateBookingStatusKLT,
-          updateBookingStatusCLT: updateBookingStatusCLT,
-          confirmationPressed: confirmationPressed,
-          onPressedConfirm: () {
-            setState(() {
-              confirmationPressed = true;
-              showBookingDetails = true;
-            });
-            showBookingConfirmationDialog(context);
-          },
-        ),
+          showBookingDetails
+              ? BookingConfirmation(
+            selectedBox: selectedBox,
+            bookedTripIndexKLT: bookedTripIndexKLT,
+            bookedTripIndexCLT: bookedTripIndexCLT,
+            getDepartureTimes: getDepartureTimes,
+            onCancel: () {
+              setState(() {
+                confirmationPressed = false;
+                showBookingDetails = false;
+                delete();
+              });
+            },
+          )
+              :
+          BookingService(
+            departureTimes: getDepartureTimes(),
+            selectedBox: selectedBox,
+            bookedTripIndexKLT: bookedTripIndexKLT,
+            bookedTripIndexCLT: bookedTripIndexCLT,
+            updateBookingStatusKLT: updateBookingStatusKLT,
+            updateBookingStatusCLT: updateBookingStatusCLT,
+            confirmationPressed: confirmationPressed,
+            countBooking: countBooking,
+
+            onPressedConfirm: () {
+              setState(() {
+                confirmationPressed = true;
+                showBookingDetails = true;
+                create(selectedStation, selectedBox == 1 ? bookedTripIndexKLT!+1 : bookedTripIndexCLT!+1);
+              });
+              showBookingConfirmationDialog(context);
+            },
+          ),
       ],
     );
   }
 }
 
-class BookingService extends StatelessWidget {
+class BookingService extends StatefulWidget {
   final List<DateTime> departureTimes;
   final int selectedBox;
   final int? bookedTripIndexKLT;
@@ -289,6 +417,7 @@ class BookingService extends StatelessWidget {
   final Function(int index, bool newValue) updateBookingStatusCLT;
   final VoidCallback onPressedConfirm;
   final bool confirmationPressed;
+  final Future<int?> Function(String MRT, int index) countBooking;
 
   BookingService({
     required this.departureTimes,
@@ -299,11 +428,59 @@ class BookingService extends StatelessWidget {
     required this.updateBookingStatusCLT,
     required this.onPressedConfirm,
     required this.confirmationPressed,
+    required this.countBooking,
   });
 
+  @override
+  State<BookingService> createState() => _BookingServiceState();
+}
+
+class _BookingServiceState extends State<BookingService> {
+  Color finalColor = Colors.grey;
+  late Timer _timer;
   bool canConfirm() {
-    return selectedBox == 1 ? bookedTripIndexKLT != null : bookedTripIndexCLT != null;
+    return widget.selectedBox == 1 ? widget.bookedTripIndexKLT != null : widget.bookedTripIndexCLT != null;
   }
+  // @override
+  // void initState() {
+  //   // TODO: implement initState
+  //   super.initState();
+  //   // startPolling();
+  //   _timer = Timer.periodic(Duration(seconds:10), (Timer timer){
+  //     setState(() {
+  //     });
+  // });
+  // }
+  // @override
+  // void dispose(){
+  // _timer.cancel();
+  // super.dispose();
+  // }
+  //
+  // Future<void> updateColor() async {
+  //   int? count = await widget.countBooking(
+  //       widget.selectedBox == 1 ? 'KAP' : 'CLT',
+  //       widget.selectedBox == 1
+  //           ? widget.bookedTripIndexKLT!
+  //           : widget.bookedTripIndexCLT!);
+  //
+  //   Color newColor = Colors.grey;
+  //   if (count != null) {
+  //     if (count < 15)
+  //       newColor = Colors.green;
+  //     else if (count >= 15 && count <= 29)
+  //       newColor = Colors.yellow;
+  //     else
+  //       newColor = Colors.red;
+  //   }
+  //
+  //   // Update the state only if the color changes
+  //   if (newColor != finalColor) {
+  //     setState(() {
+  //       finalColor = newColor;
+  //     });
+  //   }
+  // }
 
   @override
   Widget build(BuildContext context) {
@@ -312,15 +489,15 @@ class BookingService extends StatelessWidget {
         ListView.builder(
             shrinkWrap: true,
             physics: NeverScrollableScrollPhysics(),
-            itemCount: departureTimes.length,
+            itemCount: widget.departureTimes.length,
             itemBuilder: (context, index) {
-              final time = departureTimes[index];
-              bool isBookedKLT = index == bookedTripIndexKLT;
-              bool isBookedCLT = index == bookedTripIndexCLT;
-              bool canBook = selectedBox == 1
-                  ? bookedTripIndexKLT == null
-                  : bookedTripIndexCLT == null;
-
+              final time = widget.departureTimes[index];
+              int finalvalue = 0;
+              bool isBookedKLT = index == widget.bookedTripIndexKLT;
+              bool isBookedCLT = index == widget.bookedTripIndexCLT;
+              bool canBook = widget.selectedBox == 1
+                  ? widget.bookedTripIndexKLT == null
+                  : widget.bookedTripIndexCLT == null;
               return Padding(
                 padding: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 0.0),
                 child: Column(
@@ -362,22 +539,46 @@ class BookingService extends StatelessWidget {
                                       fontWeight: FontWeight.w900,
                                     ),
                                   ),
+                                  FutureBuilder<int?>(
+                                    future: widget.countBooking(widget.selectedBox == 1? 'KAP': 'CLT', index),
+                                    builder: (context, snapshot) {
+                                      int NoOfBooking = 0;
+                                      if(snapshot.connectionState == ConnectionState.waiting||snapshot.connectionState == ConnectionState.none){
+                                      return SizedBox();
+                                      }
+                                      else if (snapshot.connectionState ==
+                                          ConnectionState.done) {
+                                        if (snapshot.hasError)
+                                        return Text('Has Error');
+                                        else if (snapshot.hasData) {
+                                          final count = snapshot.data ?? 0;
+                                          NoOfBooking = count;
+                                          if (finalvalue != NoOfBooking)
+                                          finalvalue = NoOfBooking;
+                                          return Text('$finalvalue');
+                                        }
+                                      }
+                                      return Text('Unknown error');
+                                    }
+                                  ),
                                 ],
                               ),
                             ),
                           ),
                         ),
-                        SizedBox(width: 10),
+
+
+
                         GestureDetector(
                           onTap: () {
-                            if (selectedBox == 1) {
-                              updateBookingStatusKLT(index, !isBookedKLT);
+                            if (widget.selectedBox == 1) {
+                              widget.updateBookingStatusKLT(index, !isBookedKLT);
                             } else {
-                              updateBookingStatusCLT(index, !isBookedCLT);
+                              widget.updateBookingStatusCLT(index, !isBookedCLT);
                             }
                           },
                           child: Icon(
-                            selectedBox == 1 ? (isBookedKLT ? Icons.check_box : Icons
+                            widget.selectedBox == 1 ? (isBookedKLT ? Icons.check_box : Icons
                                 .check_box_outline_blank) : (isBookedCLT ? Icons
                                 .check_box : Icons.check_box_outline_blank),
                             color: Colors.blue,
@@ -395,45 +596,45 @@ class BookingService extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(8.0),
               child: ElevatedButton(
-                onPressed: onPressedConfirm,
+                onPressed: widget.onPressedConfirm,
                 child: Text('Confirm'),
               ),
             ),
           ),
         SizedBox(height: 20),
-        if(selectedBox == 1)
-        Row(
-          children: [
-            SizedBox(width: 10),
-            Text('Bus ETA for King Albert MRT',
-              style: TextStyle(
-                fontSize: 23,
-                fontFamily: 'Roboto',
-                fontWeight: FontWeight.w600,
+        if(widget.selectedBox == 1)
+          Row(
+            children: [
+              SizedBox(width: 10),
+              Text('Bus ETA for King Albert MRT',
+                style: TextStyle(
+                  fontSize: 23,
+                  fontFamily: 'Roboto',
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
         SizedBox(height: 5),
-        if(selectedBox == 1)
-        EveningStartPoint.getBusTime(KTABus1DepartureTime, context),
+        if(widget.selectedBox == 1)
+          EveningStartPoint.getBusTime(KTABus1DepartureTime, context),
         SizedBox(height: 30),
-        if(selectedBox == 2)
-        Row(
-          children: [
-            SizedBox(width: 10),
-            Text('Bus ETA for Clementi MRT',
-              style: TextStyle(
-                fontSize: 23,
-                fontFamily: 'Roboto',
-                fontWeight: FontWeight.w600,
+        if(widget.selectedBox == 2)
+          Row(
+            children: [
+              SizedBox(width: 10),
+              Text('Bus ETA for Clementi MRT',
+                style: TextStyle(
+                  fontSize: 23,
+                  fontFamily: 'Roboto',
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
         SizedBox(height: 5),
-        if(selectedBox == 2)
-        EveningStartPoint.getBusTime(CLTBus1DepartureTime, context),
+        if(widget.selectedBox == 2)
+          EveningStartPoint.getBusTime(CLTBus1DepartureTime, context),
       ],
     );
   }
@@ -458,123 +659,127 @@ class BookingConfirmation extends StatelessWidget {
   Widget build(BuildContext context) {
     final int? bookedTripIndex = selectedBox == 1 ? bookedTripIndexKLT : bookedTripIndexCLT;
     final DateTime bookedTime = getDepartureTimes()[bookedTripIndex!];
-    final String station = selectedBox == 1 ? 'King Albert Station' : 'Clementi Station';
+    final String station = selectedBox == 1 ? 'KAP' : 'CLT';
     DateTime currentTime = DateTime.now();
     bool isAfter3pm = currentTime.hour >= 15 ? true : false;
 
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(10.0),
-          child: Container(
-            color: Colors.white,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(5.0, 5.0, 5.0, 5.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.event_available, color: Colors.blueAccent),
-                      Text(
-                        'Booking Confirmation:',
-                        style: TextStyle(
-                          fontSize: 23,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blueAccent,
+    if(bookedTime != null){
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(10.0),
+            child: Container(
+              color: Colors.white,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(5.0, 5.0, 5.0, 5.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.event_available, color: Colors.blueAccent),
+                        Text(
+                          'Booking Confirmation:',
+                          style: TextStyle(
+                            fontSize: 23,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blueAccent,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Text(
-                        'Trip Number',
-                        style: TextStyle(
-                          fontFamily: 'Montserrat',
-                          fontWeight: FontWeight.bold,
+                      ],
+                    ),
+                    SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Text(
+                          'Trip Number',
+                          style: TextStyle(
+                            fontFamily: 'Montserrat',
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                      SizedBox(width: MediaQuery.of(context).size.width * 0.4),
-                      Text('${bookedTripIndex +1}',
-                        style: TextStyle(
-                          fontFamily: 'Montserrat',
-                          fontWeight: FontWeight.bold,
-                        ),)
-                    ],
-                  ),
-                  SizedBox(height: 10),
-                  Container(
-                    width: MediaQuery.of(context).size.width * 0.9,
-                    height: 1,
-                    color: Colors.grey,
-                  ),
-                  SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Text(
-                        'Time',
-                        style: TextStyle(
-                          fontFamily: 'Montserrat',
-                          fontWeight: FontWeight.bold,
+                        SizedBox(width: MediaQuery.of(context).size.width * 0.4),
+                        Text('${bookedTripIndex +1}',
+                          style: TextStyle(
+                            fontFamily: 'Montserrat',
+                            fontWeight: FontWeight.bold,
+                          ),)
+                      ],
+                    ),
+                    SizedBox(height: 10),
+                    Container(
+                      width: MediaQuery.of(context).size.width * 0.9,
+                      height: 1,
+                      color: Colors.grey,
+                    ),
+                    SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Text(
+                          'Time',
+                          style: TextStyle(
+                            fontFamily: 'Montserrat',
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                      SizedBox(width: MediaQuery.of(context).size.width * 0.52),
-                      Text('${bookedTime.hour.toString().padLeft(2, '0')}:${bookedTime.minute.toString().padLeft(2, '0')}',
-                        style: TextStyle(
-                        fontFamily: 'Montserrat',
-                        fontWeight: FontWeight.bold,
-                      ),)
-                    ],
-                  ),
-                  SizedBox(height: 10),
-                  Container(
-                    width: MediaQuery.of(context).size.width * 0.9,
-                    height: 1,
-                    color: Colors.grey,
-                  ),
-                  SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Text(
-                        'Station',
-                        style: TextStyle(
-                          fontFamily: 'Montserrat',
-                          fontWeight: FontWeight.bold,
+                        SizedBox(width: MediaQuery.of(context).size.width * 0.52),
+                        Text('${bookedTime.hour.toString().padLeft(2, '0')}:${bookedTime.minute.toString().padLeft(2, '0')}',
+                          style: TextStyle(
+                            fontFamily: 'Montserrat',
+                            fontWeight: FontWeight.bold,
+                          ),)
+                      ],
+                    ),
+                    SizedBox(height: 10),
+                    Container(
+                      width: MediaQuery.of(context).size.width * 0.9,
+                      height: 1,
+                      color: Colors.grey,
+                    ),
+                    SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Text(
+                          'Station',
+                          style: TextStyle(
+                            fontFamily: 'Montserrat',
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                      SizedBox(width: MediaQuery.of(context).size.width * 0.48),
-                      Text('$station',
-                        style: TextStyle(
-                          fontFamily: 'Montserrat',
-                          fontWeight: FontWeight.bold,
-                        ),)
-                    ],
-                  ),
-                  SizedBox(height: 10),
-                  Row(
-                    children: [
-                      SizedBox(width: MediaQuery.of(context).size.width * 0.7),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(0, 5, 0, 0),
-                        child: ElevatedButton(
-                          onPressed: onCancel,
-                          child: Text('Cancel'),
+                        SizedBox(width: MediaQuery.of(context).size.width * 0.48),
+                        Text('$station',
+                          style: TextStyle(
+                            fontFamily: 'Montserrat',
+                            fontWeight: FontWeight.bold,
+                          ),)
+                      ],
+                    ),
+                    SizedBox(height: 10),
+                    Row(
+                      children: [
+                        SizedBox(width: MediaQuery.of(context).size.width * 0.65),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(0, 5, 0, 0),
+                          child: ElevatedButton(
+                            onPressed: onCancel,
+                            child: Text('Cancel'),
+                            delete();
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-        EveningStartPoint.getBusTime(selectedBox == 1
-            ? KTABus1DepartureTime
-            : CLTBus1DepartureTime, context)
+          EveningStartPoint.getBusTime(selectedBox == 1
+              ? KTABus1DepartureTime
+              : CLTBus1DepartureTime, context)
 
-      ],
-    );
+        ],
+      );}
+    else
+      return SizedBox();
   }
 }
